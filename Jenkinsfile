@@ -31,6 +31,7 @@ pipeline {
 
         stage('Deploy') {
             steps {
+                script {
                     echo "Deploying container..."
                     // Stop and remove old container
                     if (isUnix()) {
