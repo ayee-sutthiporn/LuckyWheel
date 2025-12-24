@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lucky Wheel - Spin to Win</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;700&family=Outfit:wght@400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+</head>
+
+<body>
+    <div class="main-container">
+        <!-- Settings Button -->
+        <button id="settingsBtn" class="settings-btn" title="ตั้งค่าวงล้อ">⚙️</button>
+
+        <header>
+            <h1>เสี่ยงโชคหรรษา</h1>
+        </header>
+
+        <main class="game-area">
+            <div class="wheel-container">
+                <canvas id="wheelCanvas" width="500" height="500"></canvas>
+                <div class="pointer">▼</div>
+
+                <div class="wheel-shadow"></div>
+            </div>
+
+            <div class="controls">
+                <button id="spinBtn" class="spin-button">หมุนเลย!</button>
+                <div class="result-display" id="resultText">หมุนเลย!</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>จัดการวงล้อ</h2>
+                <button id="closeSettings" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-group">
+                    <label>ชื่อวงล้อ:</label>
+                    <input type="text" id="wheelNameInput" placeholder="My Lucky Wheel">
+                </div>
+
+                <div class="segments-list-container">
+                    <h3>รายการของรางวัล & ความน่าจะเป็น</h3>
+                    <div id="segmentsList" class="segments-list">
+                        <!-- Items injected here -->
+                    </div>
+                    <button id="addSegmentBtn" class="add-btn">+ เพิ่มรายการ</button>
+                </div>
+
+                <div class="settings-actions">
+                    <button id="newWheelBtn" class="action-btn">New</button>
+                    <button id="saveWheelBtn" class="action-btn primary">Save</button>
+                </div>
+
+                <div class="saved-wheels-section">
+                    <h3>โหลดวงล้อที่บันทึกไว้</h3>
+                    <select id="savedWheelsSelect"></select>
+                    <button id="loadWheelBtn" class="action-btn">Load</button>
+                    <button id="deleteWheelBtn" class="action-btn danger">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Assets Removed (Using Web Audio API) -->
+
+    <script src="script.js"></script>
+</body>
+
+</html>
