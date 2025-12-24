@@ -59,6 +59,14 @@ header p {
   display: inline-block;
 }
 
+.logo {
+  max-width: 100%; /* Responsive width */
+  height: auto; /* Maintain aspect ratio */
+  max-height: 200px; /* Adjust as needed */
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
 .game-area {
   display: flex;
   flex-direction: column;

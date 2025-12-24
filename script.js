@@ -270,10 +270,10 @@ function drawWheel() {
   if (logoImage && logoImage.complete) {
     ctx.save();
     ctx.beginPath();
-    ctx.arc(0, 0, 35, 0, Math.PI * 2);
+    ctx.arc(0, 0, 45, 0, Math.PI * 2); // Increased from 35 to 45
     ctx.clip(); // Clip to circle
-    // Draw image centered, size 70x70
-    ctx.drawImage(logoImage, -35, -35, 70, 70);
+    // Draw image centered, size 90x90
+    ctx.drawImage(logoImage, -45, -45, 90, 90);
     ctx.restore();
   } else {
     // Fallback Text "SPIN"
