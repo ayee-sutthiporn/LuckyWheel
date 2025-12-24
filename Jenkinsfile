@@ -31,7 +31,6 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                script {
                     echo "Deploying container..."
                     // Stop and remove old container
                     if (isUnix()) {
@@ -39,7 +38,13 @@ pipeline {
                         sh "docker rm ${APP_NAME} || true"
                         // Run new container
                         sh "docker run -d -p ${HOST_PORT}:80 --name ${APP_NAME} ${APP_NAME}:${BUILD_NUMBER}"
+                        
+                        // Deploy Nginx config for reverse proxy
+                        sh "sudo cp lucky_wheel.conf /etc/nginx/conf.d/lucky_wheel.conf"
+                        sh "sudo nginx -t"
+                        sh "sudo systemctl reload nginx"
                     } else {
+                        // Windows agent logic (if needed, but assumed Linux for prod deployment)
                         bat "docker stop ${APP_NAME} || exit 0"
                         bat "docker rm ${APP_NAME} || exit 0"
                         // Run new container
