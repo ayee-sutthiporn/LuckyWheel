@@ -17,6 +17,9 @@ const defaultColors = [
 // Default Data
 let wheelData = {
   name: "My Lucky Wheel",
+  showHistory: true, // Default ON
+  showItemsList: true, // Default ON
+  history: [], // Array of strings (recent wins)
   segments: [
     { text: "100", color: "#ffffff", weight: 1 },
     { text: "200", color: "#fff3e0", weight: 1 },
@@ -42,7 +45,6 @@ logoImage.onload = () => {
 const canvas = document.getElementById("wheelCanvas");
 const ctx = canvas.getContext("2d");
 const spinBtn = document.getElementById("spinBtn");
-const resultText = document.getElementById("resultText");
 
 // Modal Elements
 const settingsModal = document.getElementById("settingsModal");
@@ -52,10 +54,27 @@ const segmentsList = document.getElementById("segmentsList");
 const addSegmentBtn = document.getElementById("addSegmentBtn");
 const wheelNameInput = document.getElementById("wheelNameInput");
 const saveWheelBtn = document.getElementById("saveWheelBtn");
-const loadWheelBtn = document.getElementById("loadWheelBtn");
 const savedWheelsSelect = document.getElementById("savedWheelsSelect");
 const newWheelBtn = document.getElementById("newWheelBtn");
 const deleteWheelBtn = document.getElementById("deleteWheelBtn");
+const showHistoryCheckbox = document.getElementById("showHistoryCheckbox");
+const showItemsListCheckbox = document.getElementById("showItemsListCheckbox");
+
+const historyContainer = document.getElementById("historyContainer");
+const historyList = document.getElementById("historyList");
+const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const itemsListDisplay = document.getElementById("itemsListDisplay");
+const itemsListUl = document.getElementById("itemsListUl");
+
+const autoSpinInput = document.getElementById("autoSpinInput");
+const autoSpinBtn = document.getElementById("autoSpinBtn");
+const winnerModal = document.getElementById("winnerModal");
+const winnerPrize = document.getElementById("winnerPrize");
+const closeWinnerBtn = document.getElementById("closeWinnerBtn");
+
+// State for Auto Spin
+let isAutoSpinning = false;
+let autoSpinCount = 0;
 
 // Backup Elements
 const exportBtn = document.getElementById("exportBtn");
@@ -122,7 +141,15 @@ function init() {
       { text: "C", color: "#9BF6FF", weight: 1 },
     ];
   }
+  // Ensure data compatibility
+  if (!wheelData.history) wheelData.history = [];
+  if (typeof wheelData.showHistory === "undefined")
+    wheelData.showHistory = true;
+  if (typeof wheelData.showItemsList === "undefined")
+    wheelData.showItemsList = true;
+
   drawWheel();
+  updateUIFromState(); // Render panels based on state
   setupEventListeners();
 }
 
@@ -131,20 +158,79 @@ function setupEventListeners() {
 
   settingsBtn.addEventListener("click", openSettings);
   closeSettings.addEventListener("click", closeSettingsModal);
+
+  // Prevent closing when dragging text out of modal
+  let isOverlayClick = false;
+  settingsModal.addEventListener("mousedown", (e) => {
+    isOverlayClick = e.target === settingsModal;
+  });
   settingsModal.addEventListener("click", (e) => {
-    if (e.target === settingsModal) closeSettingsModal();
+    if (isOverlayClick && e.target === settingsModal) closeSettingsModal();
   });
 
   addSegmentBtn.addEventListener("click", addSegment);
   saveWheelBtn.addEventListener("click", saveToStorage);
-  loadWheelBtn.addEventListener("click", loadFromStorage);
   newWheelBtn.addEventListener("click", createNewWheel);
   deleteWheelBtn.addEventListener("click", deleteSavedWheel);
+
+  // Auto-load when selecting a saved wheel
+  savedWheelsSelect.addEventListener("change", loadFromStorage);
+
+  clearHistoryBtn.addEventListener("click", clearHistory);
+  autoSpinBtn.addEventListener("click", startAutoSpin);
+  closeWinnerBtn.addEventListener("click", closeWinnerPopup);
 
   // Backup
   if (exportBtn) exportBtn.addEventListener("click", exportData);
   if (importBtn) importBtn.addEventListener("click", () => importFile.click());
   if (importFile) importFile.addEventListener("change", importData);
+
+  // Global Keyboard Shortcuts
+  // Global Keyboard Shortcuts
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.key === " " || e.code === "Enter") {
+      // Ignore if settings modal is open
+      if (!settingsModal.classList.contains("hidden")) return;
+      // Ignore if in OBS mode (passive)
+      if (document.body.classList.contains("obs-mode")) return;
+
+      e.preventDefault(); // Stop scrolling
+      spinWheel();
+    }
+  });
+
+  // Listen for Sync Events (from other windows)
+  window.addEventListener("storage", (event) => {
+    if (event.key === "luckyWheel_event") {
+      try {
+        const data = JSON.parse(event.newValue);
+        if (data && data.type === "SPIN") {
+          // Trigger animation with synced target
+          startWheelAnimation(
+            data.winningIndex,
+            data.targetRotation,
+            data.duration
+          );
+        }
+      } catch (e) {
+        console.error("Sync error", e);
+      }
+    } else if (event.key === STORAGE_KEY_CURRENT) {
+      // Sync data changes (setting update)
+      loadCurrentState();
+      drawWheel();
+      updateUIFromState();
+    }
+  });
+
+  // Check for OBS Mode
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("mode") === "obs") {
+    document.body.classList.add("obs-mode");
+    // Hide controls immediately
+    document.querySelector(".controls").style.display = "none";
+    document.getElementById("settingsBtn").style.display = "none";
+  }
 }
 
 // --- Wheel Logic ---
@@ -177,15 +263,20 @@ function drawWheel() {
   ctx.rotate(rotationRad);
 
   // 1. Draw Segments
-  const arcSize = (2 * Math.PI) / numSegments;
+  const totalWeight = wheelData.segments.reduce(
+    (sum, seg) => sum + (parseFloat(seg.weight) || 0),
+    0
+  );
+  let currentAngle = 0;
 
   for (let i = 0; i < numSegments; i++) {
     const seg = wheelData.segments[i];
-    const angle = i * arcSize;
+    const weight = parseFloat(seg.weight) || 0;
+    const arcSize = (weight / totalWeight) * 2 * Math.PI;
 
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.arc(0, 0, wheelRadius, angle, angle + arcSize);
+    ctx.arc(0, 0, wheelRadius, currentAngle, currentAngle + arcSize);
     ctx.fillStyle = seg.color || defaultColors[i % defaultColors.length];
     ctx.fill();
     ctx.lineWidth = 1;
@@ -196,10 +287,17 @@ function drawWheel() {
     ctx.save();
     ctx.fillStyle = "#5d4037"; // Dark brown text
     ctx.font = 'bold 24px "Kanit", sans-serif';
-    ctx.rotate(angle + arcSize / 2);
+
+    // Rotate to center of this segment
+    ctx.rotate(currentAngle + arcSize / 2);
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(seg.text, wheelRadius - 25, 0);
+
+    // Prevent text from overlapping with center hub (radius 50)
+    const hubRadius = 50;
+    const maxTextWidth = wheelRadius - 25 - hubRadius - 10;
+
+    ctx.fillText(seg.text, wheelRadius - 25, 0, maxTextWidth);
 
     // Icon (Optional - drawing a small circle for visual interest if wanted)
     // ctx.beginPath();
@@ -208,6 +306,9 @@ function drawWheel() {
     // ctx.fill();
 
     ctx.restore();
+
+    // Advance angle
+    currentAngle += arcSize;
   }
 
   // 2. Draw Outer Rim (Orange)
@@ -307,40 +408,78 @@ function getWeightedWinner() {
 function spinWheel() {
   if (isSpinning || wheelData.segments.length === 0) return;
 
+  // If in OBS mode, do not allow manual spin (wait for sync)
+  if (document.body.classList.contains("obs-mode")) return;
+
+  // 1. Calculate Result locally (as Controller)
+  const winningIndex = getWeightedWinner();
+
+  // 2. Calculate Target Rotation logic
+  const numSegments = wheelData.segments.length;
+  const totalWeight = wheelData.segments.reduce(
+    (sum, seg) => sum + (parseFloat(seg.weight) || 0),
+    0
+  );
+
+  // Calculate start angle of winner
+  let angleStart = 0;
+  for (let i = 0; i < winningIndex; i++) {
+    const w = parseFloat(wheelData.segments[i].weight) || 0;
+    angleStart += (w / totalWeight) * 360;
+  }
+
+  // Winner arc size
+  const winnerWeight = parseFloat(wheelData.segments[winningIndex].weight) || 0;
+  const arcSizeDeg = (winnerWeight / totalWeight) * 360;
+
+  // Center of winning segment
+  const segmentCenter = angleStart + arcSizeDeg / 2;
+
+  const targetBase = 270 - segmentCenter;
+  const randomOffset = (Math.random() - 0.5) * (arcSizeDeg * 0.8);
+  const fullSpins = 360 * 6;
+
+  const targetRotation =
+    currentRotation +
+    fullSpins +
+    ((targetBase - (currentRotation % 360) + 360) % 360) +
+    randomOffset;
+
+  // 3. Broadcast Event to other windows
+  const syncData = {
+    type: "SPIN",
+    winningIndex: winningIndex,
+    targetRotation: targetRotation,
+    duration: 5000,
+    timestamp: Date.now(),
+  };
+  localStorage.setItem("luckyWheel_event", JSON.stringify(syncData));
+
+  // 4. Trigger Local Animation
+  startWheelAnimation(winningIndex, targetRotation, 5000);
+}
+
+function startWheelAnimation(winningIndex, targetRotation, duration) {
+  if (isSpinning) return;
+
   if (audioCtx.state === "suspended") audioCtx.resume();
 
   isSpinning = true;
   spinBtn.disabled = true;
-  resultText.innerText = "กำลังหมุน...";
-  resultText.style.color = "#d35400";
+  if (!document.body.classList.contains("obs-mode")) {
+    settingsBtn.classList.add("hidden");
+  }
 
-  const winningIndex = getWeightedWinner();
-  const numSegments = wheelData.segments.length;
-  const arcSizeDeg = 360 / numSegments;
-
-  // We want the winning segment to end up at TOP (270 degrees in canvas space usually)
-  // Our pointer is at TOP (-90deg or 270deg).
-
-  const segmentCenter = winningIndex * arcSizeDeg + arcSizeDeg / 2;
-  // To get segmentCenter to align with 270deg (North):
-  // rotation + segmentCenter = 270  => rotation = 270 - segmentCenter
-  const targetBase = 270 - segmentCenter;
-
-  const randomOffset = (Math.random() - 0.5) * (arcSizeDeg * 0.8);
-  const fullSpins = 360 * 6; // Minimum spins
-
-  // Calculate destination
-  let targetRotation =
-    currentRotation +
-    fullSpins +
-    ((targetBase - (currentRotation % 360) + 360) % 360) + // Ensure positive forward movement
-    randomOffset;
+  // Update global state for consistency
+  // (winningIndex derived from targetRotation implicitly in visual, passed here for final display)
 
   const startRotation = currentRotation;
   const startTime = performance.now();
-  const duration = 5000;
-
   let lastAngle = currentRotation;
+
+  // Recalculate for animation loop scope - use Average Arc for tick sound approx
+  const numSegments = wheelData.segments.length;
+  const arcSizeDeg = 360 / numSegments; // Average size for ticks
 
   function animate(time) {
     const elapsed = time - startTime;
@@ -365,12 +504,22 @@ function spinWheel() {
       drawWheel();
       isSpinning = false;
       spinBtn.disabled = false;
+      if (!document.body.classList.contains("obs-mode")) {
+        settingsBtn.classList.remove("hidden");
+      }
 
-      const prize = wheelData.segments[winningIndex].text;
-      resultText.innerText = `ยินดีด้วย! คุณได้รับ: ${prize}`;
+      let prize = "Unknown";
+      if (wheelData.segments[winningIndex]) {
+        prize = wheelData.segments[winningIndex].text;
+      }
 
+      addToHistory(prize);
       playWinSound();
-      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+
+      // Delay slightly before showing popup
+      setTimeout(() => {
+        showWinnerPopup(prize);
+      }, 200);
     }
   }
   rafId = requestAnimationFrame(animate);
@@ -381,15 +530,21 @@ function spinWheel() {
 function openSettings() {
   renderSegmentsList();
   wheelNameInput.value = wheelData.name;
+  showHistoryCheckbox.checked = wheelData.showHistory;
+  showItemsListCheckbox.checked = wheelData.showItemsList;
   updateSavedWheelsDropdown();
   settingsModal.classList.remove("hidden");
 }
 
 function closeSettingsModal() {
   wheelData.name = wheelNameInput.value || "Untitled Wheel";
+  wheelData.showHistory = showHistoryCheckbox.checked;
+  wheelData.showItemsList = showItemsListCheckbox.checked;
+
   updateWheelDataFromDOM();
   localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(wheelData));
   drawWheel();
+  updateUIFromState(); // Sync visibility immediately
   settingsModal.classList.add("hidden");
 }
 
@@ -485,7 +640,7 @@ function loadFromStorage() {
     wheelNameInput.value = wheelData.name;
     renderSegmentsList();
     drawWheel();
-    alert(`โหลด "${name}" เรียบร้อย`);
+    // alert(`โหลด "${name}" เรียบร้อย`);
   }
 }
 
@@ -616,6 +771,176 @@ function importData(event) {
   reader.readAsText(file);
   // Reset input to allow re-importing same file if needed
   event.target.value = "";
+}
+
+// --- UI Logic (History & Items) ---
+
+function updateUIFromState() {
+  renderHistoryDisplay();
+  renderItemsListDisplay();
+
+  // Toggle Visibility
+  if (wheelData.showHistory) {
+    historyContainer.classList.remove("hidden");
+  } else {
+    historyContainer.classList.add("hidden");
+  }
+
+  if (wheelData.showItemsList) {
+    itemsListDisplay.classList.remove("hidden");
+  } else {
+    itemsListDisplay.classList.add("hidden");
+  }
+}
+
+function renderHistoryDisplay() {
+  if (!wheelData.history) wheelData.history = [];
+  historyList.innerHTML = "";
+
+  // Copy and reverse to show newest first
+  const recent = [...wheelData.history].reverse();
+
+  recent.forEach((item) => {
+    const li = document.createElement("li");
+
+    let text = item;
+    let time = "";
+    let order = "";
+
+    // Handle migration from old string format
+    if (typeof item === "object") {
+      text = item.text;
+      time = item.time;
+      order = item.order;
+    }
+
+    li.innerHTML = `
+            <span class="history-order">#${order}</span>
+            <span class="history-time">${time}</span>
+            <span class="history-text">${text}</span>
+        `;
+    historyList.appendChild(li);
+  });
+}
+
+function addToHistory(prize) {
+  if (!wheelData.history) wheelData.history = [];
+
+  // Initialize totalSpins if missing
+  if (typeof wheelData.totalSpins === "undefined") {
+    wheelData.totalSpins = wheelData.history.length;
+  }
+
+  wheelData.totalSpins++;
+
+  const now = new Date();
+  const timeString = now.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const entry = {
+    order: wheelData.totalSpins,
+    time: timeString,
+    text: prize,
+  };
+
+  wheelData.history.push(entry);
+
+  // Keep max 10
+  if (wheelData.history.length > 10) {
+    wheelData.history.shift(); // Remove oldest
+  }
+
+  // Save
+  localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(wheelData));
+  updateUIFromState();
+}
+
+function renderItemsListDisplay() {
+  itemsListUl.innerHTML = "";
+  wheelData.segments.forEach((seg) => {
+    const li = document.createElement("li");
+    const dot = document.createElement("span");
+    dot.className = "item-dot";
+    dot.style.backgroundColor = seg.color || "#ccc";
+
+    li.appendChild(dot);
+    li.appendChild(document.createTextNode(seg.text));
+    itemsListUl.appendChild(li);
+  });
+}
+
+function clearHistory() {
+  if (!confirm("ต้องการล้างประวัติการหมุนทั้งหมด?")) return;
+  wheelData.history = [];
+  wheelData.totalSpins = 0;
+  renderHistoryDisplay();
+  localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(wheelData));
+}
+
+// --- Auto Spin & Popup Logic ---
+
+function startAutoSpin() {
+  if (isAutoSpinning) {
+    // Stop
+    isAutoSpinning = false;
+    autoSpinBtn.textContent = "Start Auto";
+    return;
+  }
+
+  const count = parseInt(autoSpinInput.value) || 0;
+  if (count <= 0) return;
+
+  isAutoSpinning = true;
+  autoSpinCount = count;
+  autoSpinBtn.textContent = "Stop Auto";
+
+  runAutoSpinLoop();
+}
+
+function runAutoSpinLoop() {
+  if (!isAutoSpinning || autoSpinCount <= 0) {
+    isAutoSpinning = false;
+    autoSpinBtn.textContent = "Start Auto";
+    return;
+  }
+
+  autoSpinCount--;
+  autoSpinInput.value = autoSpinCount;
+  spinWheel();
+}
+
+function showWinnerPopup(prize) {
+  // If OBS mode, maybe skip popup? Or show it too? Let's show it.
+  winnerPrize.innerText = prize;
+  winnerModal.classList.remove("hidden");
+
+  // Trigger confetti AFTER popup shows
+  confetti({
+    particleCount: 300,
+    spread: 100,
+    origin: { y: 0.6 },
+    zIndex: 9999,
+  });
+
+  // Play fanfare again?
+  // playWinSound();
+
+  if (isAutoSpinning) {
+    // In Auto mode, wait 2 seconds then close and continue
+    setTimeout(() => {
+      closeWinnerPopup();
+      // Add small delay between spins
+      setTimeout(runAutoSpinLoop, 500);
+    }, 2000);
+  }
+}
+
+function closeWinnerPopup() {
+  winnerModal.classList.add("hidden");
+  // If NOT auto spinning, we stay closed.
 }
 
 // Start

@@ -23,6 +23,14 @@
         </header>
 
         <main class="game-area">
+            <div id="historyContainer" class="ui-panel panel-left hidden">
+                <div class="panel-header">
+                    <h3>ประวัติการหมุน</h3>
+                    <button id="clearHistoryBtn" class="icon-btn" title="ล้างประวัติ">🗑️</button>
+                </div>
+                <ul id="historyList"></ul>
+            </div>
+
             <div class="wheel-container">
                 <canvas id="wheelCanvas" width="500" height="500"></canvas>
                 <div class="pointer">▼</div>
@@ -30,11 +38,30 @@
                 <div class="wheel-shadow"></div>
             </div>
 
+            <div id="itemsListDisplay" class="ui-panel panel-right hidden">
+                <h3>ของรางวัล</h3>
+                <ul id="itemsListUl"></ul>
+            </div>
+
             <div class="controls">
                 <button id="spinBtn" class="spin-button">หมุนเลย!</button>
-                <div class="result-display" id="resultText">หมุนเลย!</div>
+
+                <div class="auto-spin-controls">
+                    <label>Auto Spin:</label>
+                    <input type="number" id="autoSpinInput" value="1" min="1" max="100">
+                    <button id="autoSpinBtn" class="secondary-btn">Start Auto</button>
+                </div>
             </div>
         </main>
+    </div>
+
+    <!-- Winner Popup Modal -->
+    <div id="winnerModal" class="modal hidden">
+        <div class="winner-content">
+            <h2>🎉 ยินดีด้วย! 🎉</h2>
+            <div id="winnerPrize" class="winner-prize">PRIZE NAME</div>
+            <button id="closeWinnerBtn" class="spin-button">ตกลง</button>
+        </div>
     </div>
 
     <!-- Settings Modal -->
@@ -48,6 +75,14 @@
                 <div class="settings-group">
                     <label>ชื่อวงล้อ:</label>
                     <input type="text" id="wheelNameInput" placeholder="My Lucky Wheel">
+                </div>
+
+                <div class="settings-group">
+                    <label>ตัวเลือกการแสดงผล:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" id="showHistoryCheckbox"> แสดงประวัติ</label>
+                        <label><input type="checkbox" id="showItemsListCheckbox"> แสดงรายการของรางวัล</label>
+                    </div>
                 </div>
 
                 <div class="segments-list-container">

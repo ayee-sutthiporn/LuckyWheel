@@ -180,17 +180,6 @@ header p {
   transform: none;
 }
 
-.result-display {
-  font-size: 1.8rem;
-  min-height: 2.5rem;
-  font-weight: 700;
-  color: #d35400;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 10px 30px;
-  border-radius: 15px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-}
-
 /* Mascot Removed */
 
 @media (min-width: 768px) {
@@ -465,4 +454,231 @@ select {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #aaa;
+}
+
+/* Utility Classes */
+.hidden {
+  display: none !important;
+}
+
+/* UI Panels (History & Items) */
+.ui-panel {
+  position: absolute;
+  top: 100px; /* Below header */
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(5px);
+  padding: 1rem;
+  border-radius: 15px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  max-width: 250px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 50;
+  text-align: left;
+  border: 2px solid white;
+}
+
+.panel-left {
+  left: 20px;
+}
+
+.panel-right {
+  right: 20px;
+}
+
+.ui-panel h3 {
+  font-size: 1.2rem;
+  color: #d35400;
+  margin-bottom: 0.8rem;
+  border-bottom: 2px solid #ffcc80;
+  padding-bottom: 0.4rem;
+}
+
+.ui-panel ul {
+  list-style: none;
+  padding: 0;
+}
+
+.ui-panel li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+  font-size: 0.95rem;
+  color: #5d4037;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.history-order {
+  font-weight: bold;
+  color: #ff9f43;
+  min-width: 30px;
+}
+
+.history-time {
+  color: #999;
+  font-size: 0.85rem;
+  min-width: 40px;
+}
+
+.history-text {
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.ui-panel li:last-child {
+  border-bottom: none;
+}
+
+.item-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  display: inline-block;
+}
+
+/* Settings Checkbox Group */
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #fdfdfd;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+/* OBS Mode - Clean Display */
+body.obs-mode .controls,
+body.obs-mode .settings-btn,
+body.obs-mode .footer,
+body.obs-mode .modal {
+  display: none !important;
+}
+
+/* Ensure panels are visible in OBS mode if toggled on, maybe scale up */
+body.obs-mode .ui-panel {
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.95); /* More opaque for readability */
+}
+
+body.obs-mode .wheel-container {
+  /* Optional: Make wheel larger in OBS mode if desired */
+  transform: scale(1.1);
+  margin-top: 50px;
+}
+
+/* Panel Header */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #ffcc80;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.4rem;
+}
+
+.panel-header h3 {
+  margin: 0;
+  border: none;
+  padding: 0;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0 5px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.icon-btn:hover {
+  opacity: 1;
+}
+
+/* Auto Spin Controls */
+.auto-spin-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.5rem 1rem;
+  border-radius: 30px;
+  margin-top: 0.5rem;
+}
+
+.auto-spin-controls input {
+  width: 60px;
+  padding: 5px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  text-align: center;
+}
+
+.secondary-btn {
+  background: #4db6ac;
+  color: white;
+  border: none;
+  padding: 5px 15px;
+  border-radius: 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.secondary-btn:hover {
+  background: #26a69a;
+}
+.secondary-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Winner Modal */
+.winner-content {
+  background: linear-gradient(135deg, #fff, #fff8e1);
+  padding: 3rem;
+  border-radius: 30px;
+  text-align: center;
+  box-shadow: 0 0 50px rgba(255, 215, 0, 0.6);
+  border: 5px solid #ffb300;
+  animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  max-width: 90%;
+  width: 500px;
+}
+
+.winner-content h2 {
+  color: #e65100;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.winner-prize {
+  font-size: 3rem;
+  font-weight: 800;
+  color: #d35400;
+  margin: 1.5rem 0;
+  text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.1);
+  word-wrap: break-word;
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
