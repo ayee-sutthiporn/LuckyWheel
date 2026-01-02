@@ -11,7 +11,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getFirestore, collection, doc, getDocs, getDoc, setDoc, deleteDoc, addDoc }
+        import { getFirestore, collection, doc, getDocs, getDoc, setDoc, deleteDoc, addDoc, onSnapshot }
             from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -38,7 +38,8 @@
             getDoc,
             setDoc,
             deleteDoc,
-            addDoc
+            addDoc,
+            onSnapshot
         };
 
         console.log("Firebase Initialized");
@@ -124,7 +125,22 @@
             <div class="modal-body">
                 <div class="settings-group">
                     <label>ชื่อวงล้อ:</label>
-                    <input type="text" id="wheelNameInput" placeholder="My Lucky Wheel">
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="wheelNameInput" placeholder="My Lucky Wheel" style="flex: 1;">
+                        <button id="copyOBSLinkBtn" class="spin-button" style="padding: 5px 10px; font-size: 0.9em;"
+                            title="คัดลอกลิงก์สำหรับ OBS">🔗 OBS Link</button>
+                    </div>
+                </div>
+
+                <div class="saved-wheels-section"
+                    style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                    <label style="display:block; margin-bottom:5px; font-weight:bold;">โหลดวงล้อที่บันทึกไว้:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <select id="savedWheelsSelect" style="flex: 1; padding: 8px;"></select>
+                        <!-- Load button removed as it auto-loads, keeping delete -->
+                        <button id="deleteWheelBtn" class="action-btn danger" style="padding: 5px 10px;"
+                            title="Delete Wheel">🗑️</button>
+                    </div>
                 </div>
 
                 <div class="settings-group">
@@ -148,12 +164,7 @@
                     <button id="saveWheelBtn" class="action-btn primary">Save</button>
                 </div>
 
-                <div class="saved-wheels-section">
-                    <h3>โหลดวงล้อที่บันทึกไว้</h3>
-                    <select id="savedWheelsSelect"></select>
-                    <button id="loadWheelBtn" class="action-btn">Load</button>
-                    <button id="deleteWheelBtn" class="action-btn danger">Delete</button>
-                </div>
+
             </div>
         </div>
     </div>

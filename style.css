@@ -563,7 +563,7 @@ select {
 body.obs-mode .controls,
 body.obs-mode .settings-btn,
 body.obs-mode .footer,
-body.obs-mode .modal {
+body.obs-mode #settingsModal {
   display: none !important;
 }
 

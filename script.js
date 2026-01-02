@@ -57,6 +57,7 @@ const saveWheelBtn = document.getElementById("saveWheelBtn");
 const savedWheelsSelect = document.getElementById("savedWheelsSelect");
 const newWheelBtn = document.getElementById("newWheelBtn");
 const deleteWheelBtn = document.getElementById("deleteWheelBtn");
+const copyOBSLinkBtn = document.getElementById("copyOBSLinkBtn");
 const showHistoryCheckbox = document.getElementById("showHistoryCheckbox");
 const showItemsListCheckbox = document.getElementById("showItemsListCheckbox");
 
@@ -178,6 +179,32 @@ function setupEventListeners() {
     if (isOverlayClick && e.target === settingsModal) closeSettingsModal();
   });
 
+  // Copy OBS Link
+  if (copyOBSLinkBtn) {
+    copyOBSLinkBtn.addEventListener("click", () => {
+      if (!wheelData.name || wheelData.name.startsWith("New Wheel")) {
+        alert("กรุณาบันทึกชื่อวงล้อก่อนสร้างลิงก์");
+        return;
+      }
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("mode", "obs");
+      url.searchParams.set("id", wheelData.name);
+
+      navigator.clipboard
+        .writeText(url.toString())
+        .then(() => {
+          alert(
+            "คัดลอกลิงก์ OBS เรียบร้อย! \nสามารถนำไปเปิดใน Browser Source ของ OBS ได้เลย"
+          );
+        })
+        .catch((err) => {
+          console.error("Copy failed", err);
+          prompt("Copy this link:", url.toString());
+        });
+    });
+  }
+
   addSegmentBtn.addEventListener("click", addSegment);
   saveWheelBtn.addEventListener("click", saveToStorage);
   newWheelBtn.addEventListener("click", createNewWheel);
@@ -189,14 +216,18 @@ function setupEventListeners() {
   clearHistoryBtn.addEventListener("click", clearHistory);
   autoSpinBtn.addEventListener("click", startAutoSpin);
   closeWinnerBtn.addEventListener("click", closeWinnerPopup);
-  closeSummaryBtn.addEventListener("click", () => {
-    summaryModal.classList.add("hidden");
-  });
+
+  closeSummaryBtn.addEventListener("click", closeSummaryModal);
 
   // Backup
   if (exportBtn) exportBtn.addEventListener("click", exportData);
   if (importBtn) importBtn.addEventListener("click", () => importFile.click());
   if (importFile) importFile.addEventListener("change", importData);
+
+  // Wheel Name Input - Real-time Update
+  wheelNameInput.addEventListener("input", (e) => {
+    wheelData.name = e.target.value;
+  });
 
   // Global Keyboard Shortcuts
   // Global Keyboard Shortcuts
@@ -243,6 +274,12 @@ function setupEventListeners() {
     // Hide controls immediately
     document.querySelector(".controls").style.display = "none";
     document.getElementById("settingsBtn").style.display = "none";
+
+    // Load specific wheel if provided
+    const wheelId = urlParams.get("id");
+    if (wheelId) {
+      setTimeout(() => loadWheelByName(wheelId), 1000); // Small delay for Firebase init
+    }
   }
 }
 
@@ -458,21 +495,41 @@ function spinWheel() {
     ((targetBase - (currentRotation % 360) + 360) % 360) +
     randomOffset;
 
-  // 3. Broadcast Event to other windows
+  // 3. Broadcast Event to other windows (LocalStorage & Firebase)
   const syncData = {
     type: "SPIN",
     winningIndex: winningIndex,
     targetRotation: targetRotation,
     duration: 5000,
     timestamp: Date.now(),
+    isAutoSpin: isAutoSpinning, // Add flag
   };
   localStorage.setItem("luckyWheel_event", JSON.stringify(syncData));
 
+  // Sync to Firebase (for Live/OBS mode on different machines)
+  if (wheelData.name && !wheelData.name.startsWith("New Wheel")) {
+    const { setDoc, doc } = window.FirebaseFirestore;
+    setDoc(
+      doc(window.db, "wheels", wheelData.name),
+      {
+        spinEvent: syncData,
+      },
+      { merge: true }
+    ).catch((err) => console.error("Broadcast failed", err));
+  }
+
   // 4. Trigger Local Animation
-  startWheelAnimation(winningIndex, targetRotation, 5000);
+  startWheelAnimation(winningIndex, targetRotation, 5000, {
+    isAutoSpin: isAutoSpinning,
+  });
 }
 
-function startWheelAnimation(winningIndex, targetRotation, duration) {
+function startWheelAnimation(
+  winningIndex,
+  targetRotation,
+  duration,
+  options = {}
+) {
   if (isSpinning) return;
 
   if (audioCtx.state === "suspended") audioCtx.resume();
@@ -531,7 +588,7 @@ function startWheelAnimation(winningIndex, targetRotation, duration) {
 
       // Delay slightly before showing popup
       setTimeout(() => {
-        showWinnerPopup(prize);
+        showWinnerPopup(prize, options.isAutoSpin);
       }, 200);
     }
   }
@@ -619,12 +676,121 @@ function updateWheelDataFromDOM() {
   });
 }
 
-// --- Storage Logic ---
+// --- Storage Logic (Firebase & Realtime) ---
+
+let unsubscribeCurrentWheel = null;
+
+function subscribeToWheelUpdates(docId) {
+  if (unsubscribeCurrentWheel) {
+    unsubscribeCurrentWheel(); // Stop listening to old wheel
+    unsubscribeCurrentWheel = null;
+  }
+
+  const { onSnapshot, doc } = window.FirebaseFirestore;
+  console.log("Subscribing to live updates for:", docId);
+
+  unsubscribeCurrentWheel = onSnapshot(
+    doc(window.db, "wheels", docId),
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+
+        // Check for Spin Event
+        if (data.spinEvent && data.spinEvent.timestamp > lastSpinTimestamp) {
+          // It's a new spin we haven't processed!
+          console.log("Received remote spin event:", data.spinEvent);
+          lastSpinTimestamp = data.spinEvent.timestamp;
+
+          // If we are currently spinning, maybe ignore or force sync?
+          // Let's ignore if already spinning to avoid glitch, or maybe Queue it?
+          // Simple version: if not spinning, spin.
+          if (!isSpinning) {
+            startWheelAnimation(
+              data.spinEvent.winningIndex,
+              data.spinEvent.targetRotation,
+              data.spinEvent.duration,
+              { isAutoSpin: data.spinEvent.isAutoSpin }
+            );
+          }
+        }
+
+        // Potentially sync other data like segments update?
+        // Optionally update local wheelData if it changed remotely (Real-time editing!)
+        // But let's be careful not to overwrite our local edits if we are the editor.
+        // For now, let's just focus on SPIN sync.
+        // Actually, if we are in OBS mode, we definitely want data updates.
+        // In OBS mode, we want to stay in sync with EVERYTHING (Settings, Segments, History)
+        if (document.body.classList.contains("obs-mode")) {
+          // Compare essential data to avoid unnecessary re-renders?
+          // Or just overwrite. Since it's OBS, we want 1:1 reflection.
+          // We preserve 'spinEvent' processing which is handled above.
+
+          // Update local data
+          wheelData.name = data.name;
+          wheelData.segments = data.segments;
+          wheelData.showHistory = data.showHistory;
+          wheelData.showItemsList = data.showItemsList;
+          wheelData.history = data.history || [];
+          wheelData.totalSpins = data.totalSpins || 0;
+
+          // Re-render
+          drawWheel();
+          updateUIFromState();
+          renderSegmentsList();
+
+          // Check for Close Popup Event
+          if (
+            data.closeEvent &&
+            data.closeEvent.timestamp > lastCloseTimestamp
+          ) {
+            console.log("Received remote close event");
+            lastCloseTimestamp = data.closeEvent.timestamp;
+            closeWinnerPopup();
+          }
+
+          // Check for Summary Event
+          if (
+            data.summaryEvent &&
+            data.summaryEvent.timestamp > lastSummaryTimestamp
+          ) {
+            console.log("Received remote summary event");
+            lastSummaryTimestamp = data.summaryEvent.timestamp;
+            autoSpinResults = data.summaryEvent.results || [];
+            showAutoSpinSummary(true);
+          }
+
+          // Check for Close Summary Event
+          if (
+            data.closeSummaryEvent &&
+            data.closeSummaryEvent.timestamp > lastCloseSummaryTimestamp
+          ) {
+            console.log("Received remote close summary event");
+            lastCloseSummaryTimestamp = data.closeSummaryEvent.timestamp;
+            closeSummaryModal();
+          }
+
+          // Sync history list logic is inside updateUIFromState -> renderHistoryDisplay
+        }
+      }
+    }
+  );
+}
+let lastSpinTimestamp = 0;
+let lastCloseTimestamp = 0;
+let lastSummaryTimestamp = 0;
+let lastCloseSummaryTimestamp = 0;
+
+// --- Storage Logic (Firebase) ---
 
 // --- Storage Logic (Firebase) ---
 
 async function saveToStorage() {
   updateWheelDataFromDOM();
+
+  // Ensure settings are synced even if modal wasn't closed
+  if (showHistoryCheckbox) wheelData.showHistory = showHistoryCheckbox.checked;
+  if (showItemsListCheckbox)
+    wheelData.showItemsList = showItemsListCheckbox.checked;
 
   if (!wheelData.name) {
     alert("กรุณาตั้งชื่อวงล้อ");
@@ -651,7 +817,10 @@ async function saveToStorage() {
 async function loadFromStorage() {
   const name = savedWheelsSelect.value;
   if (!name) return;
+  await loadWheelByName(name);
+}
 
+async function loadWheelByName(name) {
   try {
     showLoading(true);
     const { getDoc, doc } = window.FirebaseFirestore;
@@ -665,10 +834,15 @@ async function loadFromStorage() {
       renderSegmentsList();
       drawWheel();
       updateUIFromState();
+
+      // Start Realtime Listener
+      subscribeToWheelUpdates(name);
+    } else {
+      console.warn("Wheel not found:", name);
     }
   } catch (e) {
     console.error("Load failed", e);
-    alert("โหลดไม่สำเร็จ");
+    // alert("โหลดไม่สำเร็จ");
   } finally {
     showLoading(false);
   }
@@ -1019,13 +1193,18 @@ function runAutoSpinLoop() {
   spinWheel();
 }
 
-function showWinnerPopup(prize) {
+function showWinnerPopup(prize, isAutoSpinRemote = false) {
   // Save result for auto spin summary
-  if (isAutoSpinning) {
-    autoSpinResults.push(prize);
+  if (isAutoSpinning || isAutoSpinRemote) {
+    if (isAutoSpinning) autoSpinResults.push(prize); // Only push if local controller? Or OBS too?
+    // Actually OBS should also push if we want summary there
+    if (!isAutoSpinning && isAutoSpinRemote) autoSpinResults.push(prize);
+
     // Skip popup and confetti in auto mode
-    // Just wait a short delay and continue
-    setTimeout(runAutoSpinLoop, 500);
+    // Just wait a short delay and continue (if local)
+    if (isAutoSpinning) {
+      setTimeout(runAutoSpinLoop, 500);
+    }
     return;
   }
 
@@ -1047,14 +1226,27 @@ function showWinnerPopup(prize) {
 
 function closeWinnerPopup() {
   winnerModal.classList.add("hidden");
-  // If NOT auto spinning, we stay closed.
+
+  // Sync Close Event to Cloud (for OBS)
+  if (wheelData.name && !wheelData.name.startsWith("New Wheel")) {
+    // Only sync if WE are the controller (not OBS mode purely reacting)
+    if (!document.body.classList.contains("obs-mode")) {
+      const { setDoc, doc } = window.FirebaseFirestore;
+      setDoc(
+        doc(window.db, "wheels", wheelData.name),
+        {
+          closeEvent: { timestamp: Date.now() },
+        },
+        { merge: true }
+      ).catch((err) => console.error("Close sync failed", err));
+    }
+  }
 }
 
-function showAutoSpinSummary() {
+function showAutoSpinSummary(isRemote = false) {
   summaryList.innerHTML = "";
 
-  // Group results by count? or just list them?
-  // Let's group them: "Item A (x2)"
+  // Group results by count
   const counts = {};
   autoSpinResults.forEach((r) => {
     counts[r] = (counts[r] || 0) + 1;
@@ -1072,6 +1264,41 @@ function showAutoSpinSummary() {
   }
 
   summaryModal.classList.remove("hidden");
+
+  // Sync Summary to Cloud
+  if (!isRemote && wheelData.name && !wheelData.name.startsWith("New Wheel")) {
+    if (!document.body.classList.contains("obs-mode")) {
+      const { setDoc, doc } = window.FirebaseFirestore;
+      setDoc(
+        doc(window.db, "wheels", wheelData.name),
+        {
+          summaryEvent: {
+            timestamp: Date.now(),
+            results: autoSpinResults,
+          },
+        },
+        { merge: true }
+      ).catch((err) => console.error("Summary sync failed", err));
+    }
+  }
+}
+
+function closeSummaryModal() {
+  summaryModal.classList.add("hidden");
+
+  // Sync Close Summary to Cloud
+  if (wheelData.name && !wheelData.name.startsWith("New Wheel")) {
+    if (!document.body.classList.contains("obs-mode")) {
+      const { setDoc, doc } = window.FirebaseFirestore;
+      setDoc(
+        doc(window.db, "wheels", wheelData.name),
+        {
+          closeSummaryEvent: { timestamp: Date.now() },
+        },
+        { merge: true }
+      ).catch((err) => console.error("Close Summary sync failed", err));
+    }
+  }
 }
 
 // Start
