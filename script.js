@@ -60,6 +60,11 @@ const deleteWheelBtn = document.getElementById("deleteWheelBtn");
 const showHistoryCheckbox = document.getElementById("showHistoryCheckbox");
 const showItemsListCheckbox = document.getElementById("showItemsListCheckbox");
 
+// Summary Modal Elements
+const summaryModal = document.getElementById("summaryModal");
+const summaryList = document.getElementById("summaryList");
+const closeSummaryBtn = document.getElementById("closeSummaryBtn");
+
 const historyContainer = document.getElementById("historyContainer");
 const historyList = document.getElementById("historyList");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
@@ -75,6 +80,7 @@ const closeWinnerBtn = document.getElementById("closeWinnerBtn");
 // State for Auto Spin
 let isAutoSpinning = false;
 let autoSpinCount = 0;
+let autoSpinResults = []; // Track results for summary
 
 // Backup Elements
 const exportBtn = document.getElementById("exportBtn");
@@ -151,6 +157,10 @@ function init() {
   drawWheel();
   updateUIFromState(); // Render panels based on state
   setupEventListeners();
+
+  // Try to load list initially (async)
+  // setTimeout to let Firebase init
+  setTimeout(() => updateSavedWheelsDropdown(), 1000);
 }
 
 function setupEventListeners() {
@@ -179,6 +189,9 @@ function setupEventListeners() {
   clearHistoryBtn.addEventListener("click", clearHistory);
   autoSpinBtn.addEventListener("click", startAutoSpin);
   closeWinnerBtn.addEventListener("click", closeWinnerPopup);
+  closeSummaryBtn.addEventListener("click", () => {
+    summaryModal.classList.add("hidden");
+  });
 
   // Backup
   if (exportBtn) exportBtn.addEventListener("click", exportData);
@@ -608,57 +621,85 @@ function updateWheelDataFromDOM() {
 
 // --- Storage Logic ---
 
-function saveToStorage() {
-  updateWheelDataFromDOM();
-  let saves = JSON.parse(localStorage.getItem(STORAGE_KEY_SAVES) || "[]");
+// --- Storage Logic (Firebase) ---
 
-  const existingIndex = saves.findIndex((w) => w.name === wheelData.name);
-  if (existingIndex >= 0) {
-    if (!confirm(`มีวงล้อชื่อ "${wheelData.name}" อยู่แล้ว ต้องการทับหรือไม่?`))
-      return;
-    saves[existingIndex] = JSON.parse(JSON.stringify(wheelData));
-  } else {
-    saves.push(JSON.parse(JSON.stringify(wheelData)));
+async function saveToStorage() {
+  updateWheelDataFromDOM();
+
+  if (!wheelData.name) {
+    alert("กรุณาตั้งชื่อวงล้อ");
+    return;
   }
 
-  localStorage.setItem(STORAGE_KEY_SAVES, JSON.stringify(saves));
-  localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(wheelData));
-  alert("บันทึกเรียบร้อย!");
-  updateSavedWheelsDropdown();
+  const docId = wheelData.name;
+
+  try {
+    showLoading(true);
+    const { setDoc, doc } = window.FirebaseFirestore;
+    await setDoc(doc(window.db, "wheels", docId), wheelData);
+
+    alert("บันทึกเรียบร้อย (Cloud)!");
+    updateSavedWheelsDropdown();
+  } catch (e) {
+    console.error("Save failed", e);
+    alert("บันทึกไม่สำเร็จ: " + e.message);
+  } finally {
+    showLoading(false);
+  }
 }
 
-function loadFromStorage() {
+async function loadFromStorage() {
   const name = savedWheelsSelect.value;
   if (!name) return;
 
-  const saves = JSON.parse(localStorage.getItem(STORAGE_KEY_SAVES) || "[]");
-  const found = saves.find((w) => w.name === name);
+  try {
+    showLoading(true);
+    const { getDoc, doc } = window.FirebaseFirestore;
+    const snap = await getDoc(doc(window.db, "wheels", name));
 
-  if (found) {
-    wheelData = JSON.parse(JSON.stringify(found));
-    localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(wheelData));
-    wheelNameInput.value = wheelData.name;
-    renderSegmentsList();
-    drawWheel();
-    // alert(`โหลด "${name}" เรียบร้อย`);
+    if (snap.exists()) {
+      wheelData = snap.data();
+      localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(wheelData));
+
+      wheelNameInput.value = wheelData.name;
+      renderSegmentsList();
+      drawWheel();
+      updateUIFromState();
+    }
+  } catch (e) {
+    console.error("Load failed", e);
+    alert("โหลดไม่สำเร็จ");
+  } finally {
+    showLoading(false);
   }
 }
 
-function deleteSavedWheel() {
+async function deleteSavedWheel() {
   const name = savedWheelsSelect.value;
   if (!name) return;
   if (!confirm(`ต้องการลบ "${name}" ใช่หรือไม่?`)) return;
 
-  let saves = JSON.parse(localStorage.getItem(STORAGE_KEY_SAVES) || "[]");
-  saves = saves.filter((w) => w.name !== name);
-  localStorage.setItem(STORAGE_KEY_SAVES, JSON.stringify(saves));
+  try {
+    showLoading(true);
+    const { deleteDoc, doc } = window.FirebaseFirestore;
+    await deleteDoc(doc(window.db, "wheels", name));
 
-  updateSavedWheelsDropdown();
-  alert("ลบเรียบร้อย");
+    alert("ลบเรียบร้อย");
+    updateSavedWheelsDropdown();
+  } catch (e) {
+    console.error("Delete failed", e);
+    alert("ลบไม่สำเร็จ");
+  } finally {
+    showLoading(false);
+  }
 }
 
-function createNewWheel() {
-  if (!confirm("สร้างวงล้อใหม่? ข้อมูลปัจจุบันที่ยังไม่บันทึกจะหายไป")) return;
+function createNewWheel(isSilent = false) {
+  if (
+    !isSilent &&
+    !confirm("สร้างวงล้อใหม่? ข้อมูลปัจจุบันที่ยังไม่บันทึกจะหายไป")
+  )
+    return;
   wheelData = {
     name: "New Wheel " + Math.floor(Math.random() * 1000),
     segments: [
@@ -671,27 +712,74 @@ function createNewWheel() {
   wheelNameInput.value = wheelData.name;
 }
 
-function updateSavedWheelsDropdown() {
-  const saves = JSON.parse(localStorage.getItem(STORAGE_KEY_SAVES) || "[]");
-  savedWheelsSelect.innerHTML = "";
+async function updateSavedWheelsDropdown() {
+  // Capture current selection (or name) before refresh
+  const currentName = wheelData.name;
+  savedWheelsSelect.innerHTML = "<option>กำลังโหลด...</option>";
 
-  if (saves.length === 0) {
-    const op = document.createElement("option");
-    op.text = "-- ไม่มีข้อมูลที่บันทึก --";
-    savedWheelsSelect.appendChild(op);
-    loadWheelBtn.disabled = true;
-    deleteWheelBtn.disabled = true;
-    return;
+  try {
+    const { getDocs, collection } = window.FirebaseFirestore;
+    const querySnapshot = await getDocs(collection(window.db, "wheels"));
+
+    savedWheelsSelect.innerHTML = "";
+    if (querySnapshot.empty) {
+      const op = document.createElement("option");
+      op.text = "-- ไม่มีข้อมูล (Cloud) --";
+      savedWheelsSelect.appendChild(op);
+      deleteWheelBtn.disabled = true;
+
+      // Auto-create default wheel if nothing exists
+      createNewWheel(true);
+      return;
+    }
+
+    // Populate dropdown
+    let firstWheelName = null;
+    let foundCurrent = false;
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      const op = document.createElement("option");
+      op.value = data.name;
+      const count = data.segments ? data.segments.length : 0;
+      op.text = `${data.name} (${count})`;
+      savedWheelsSelect.appendChild(op);
+
+      if (!firstWheelName) firstWheelName = data.name;
+      if (data.name === currentName) foundCurrent = true;
+    });
+
+    deleteWheelBtn.disabled = false;
+
+    // Logic:
+    // 1. If currently active wheel exists in list, select it.
+    // 2. If NOT, and we have items, select the FIRST one and load it.
+
+    if (foundCurrent) {
+      savedWheelsSelect.value = currentName;
+      // No need to loadFromStorage() because we are already ON this wheel data
+    } else if (firstWheelName) {
+      savedWheelsSelect.value = firstWheelName;
+      loadFromStorage();
+    }
+  } catch (e) {
+    console.error("List failed", e);
+    savedWheelsSelect.innerHTML = "<option>Error Loading</option>";
   }
+}
 
-  loadWheelBtn.disabled = false;
-  deleteWheelBtn.disabled = false;
-  saves.forEach((s) => {
-    const op = document.createElement("option");
-    op.value = s.name;
-    op.text = s.name + ` (${s.segments.length} items)`;
-    savedWheelsSelect.appendChild(op);
-  });
+function showLoading(isLoading) {
+  if (isLoading) {
+    saveWheelBtn.disabled = true;
+    deleteWheelBtn.disabled = true;
+    savedWheelsSelect.disabled = true;
+    document.body.style.cursor = "wait";
+  } else {
+    saveWheelBtn.disabled = false;
+    deleteWheelBtn.disabled = false;
+    savedWheelsSelect.disabled = false;
+    document.body.style.cursor = "default";
+  }
 }
 
 function loadCurrentState() {
@@ -853,9 +941,22 @@ function addToHistory(prize) {
     wheelData.history.shift(); // Remove oldest
   }
 
-  // Save
+  // Save to Local (cache)
   localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(wheelData));
   updateUIFromState();
+
+  // Sync to Cloud (if wheel is named/saved)
+  // We don't want to await here to block UI
+  if (wheelData.name && !wheelData.name.startsWith("New Wheel")) {
+    const docId = wheelData.name;
+    const { setDoc, doc } = window.FirebaseFirestore;
+    // Use merge: true to just update history/totalSpins without overwriting everything if changed elsewhere?
+    // Or just overwrite entire data? Since we are the controller.
+    // Ideally we update only the fields changed, but setDoc with merge is easy.
+    setDoc(doc(window.db, "wheels", docId), wheelData, { merge: true }).catch(
+      (err) => console.error("Cloud history sync failed", err)
+    );
+  }
 }
 
 function renderItemsListDisplay() {
@@ -895,6 +996,7 @@ function startAutoSpin() {
 
   isAutoSpinning = true;
   autoSpinCount = count;
+  autoSpinResults = []; // Reset results
   autoSpinBtn.textContent = "Stop Auto";
 
   runAutoSpinLoop();
@@ -904,6 +1006,11 @@ function runAutoSpinLoop() {
   if (!isAutoSpinning || autoSpinCount <= 0) {
     isAutoSpinning = false;
     autoSpinBtn.textContent = "Start Auto";
+
+    // Show Summary if we have results
+    if (autoSpinResults.length > 0) {
+      showAutoSpinSummary();
+    }
     return;
   }
 
@@ -913,6 +1020,15 @@ function runAutoSpinLoop() {
 }
 
 function showWinnerPopup(prize) {
+  // Save result for auto spin summary
+  if (isAutoSpinning) {
+    autoSpinResults.push(prize);
+    // Skip popup and confetti in auto mode
+    // Just wait a short delay and continue
+    setTimeout(runAutoSpinLoop, 500);
+    return;
+  }
+
   // If OBS mode, maybe skip popup? Or show it too? Let's show it.
   winnerPrize.innerText = prize;
   winnerModal.classList.remove("hidden");
@@ -927,20 +1043,35 @@ function showWinnerPopup(prize) {
 
   // Play fanfare again?
   // playWinSound();
-
-  if (isAutoSpinning) {
-    // In Auto mode, wait 2 seconds then close and continue
-    setTimeout(() => {
-      closeWinnerPopup();
-      // Add small delay between spins
-      setTimeout(runAutoSpinLoop, 500);
-    }, 2000);
-  }
 }
 
 function closeWinnerPopup() {
   winnerModal.classList.add("hidden");
   // If NOT auto spinning, we stay closed.
+}
+
+function showAutoSpinSummary() {
+  summaryList.innerHTML = "";
+
+  // Group results by count? or just list them?
+  // Let's group them: "Item A (x2)"
+  const counts = {};
+  autoSpinResults.forEach((r) => {
+    counts[r] = (counts[r] || 0) + 1;
+  });
+
+  for (const [prize, count] of Object.entries(counts)) {
+    const li = document.createElement("li");
+    li.style.borderBottom = "1px solid rgba(0,0,0,0.1)";
+    li.style.padding = "5px 0";
+    li.style.display = "flex";
+    li.style.justifyContent = "space-between";
+
+    li.innerHTML = `<span>${prize}</span> <span style="font-weight:bold;">x${count}</span>`;
+    summaryList.appendChild(li);
+  }
+
+  summaryModal.classList.remove("hidden");
 }
 
 // Start

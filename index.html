@@ -5,6 +5,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lucky Wheel - Spin to Win</title>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getFirestore, collection, doc, getDocs, getDoc, setDoc, deleteDoc, addDoc }
+            from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDTobyEj6lvstDddxT2Em_3gu07WRizuGs",
+            authDomain: "luckywheeldb-d4a4d.firebaseapp.com",
+            projectId: "luckywheeldb-d4a4d",
+            storageBucket: "luckywheeldb-d4a4d.firebasestorage.app",
+            messagingSenderId: "876301137746",
+            appId: "1:876301137746:web:3b8877b6eaa3e6a961ac8b",
+            measurementId: "G-B789ZQ8T87"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Export to window for script.js to use
+        window.firebaseApp = app;
+        window.db = db;
+        window.FirebaseFirestore = {
+            collection,
+            doc,
+            getDocs,
+            getDoc,
+            setDoc,
+            deleteDoc,
+            addDoc
+        };
+
+        console.log("Firebase Initialized");
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;700&family=Outfit:wght@400;700&display=swap"
@@ -61,6 +99,18 @@
             <h2>🎉 ยินดีด้วย! 🎉</h2>
             <div id="winnerPrize" class="winner-prize">PRIZE NAME</div>
             <button id="closeWinnerBtn" class="spin-button">ตกลง</button>
+        </div>
+    </div>
+
+    <!-- Auto Spin Summary Modal -->
+    <div id="summaryModal" class="modal hidden">
+        <div class="winner-content" style="max-width: 500px;">
+            <h2>📊 สรุปผลการสุ่ม</h2>
+            <ul id="summaryList"
+                style="text-align: left; margin: 20px 0; max-height: 300px; overflow-y: auto; list-style: none; padding: 0;">
+                <!-- List items will go here -->
+            </ul>
+            <button id="closeSummaryBtn" class="spin-button">ปิด</button>
         </div>
     </div>
 
