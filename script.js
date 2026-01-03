@@ -253,7 +253,8 @@ function setupEventListeners() {
           startWheelAnimation(
             data.winningIndex,
             data.targetRotation,
-            data.duration
+            data.duration,
+            { isAutoSpin: data.isAutoSpin }
           );
         }
       } catch (e) {
